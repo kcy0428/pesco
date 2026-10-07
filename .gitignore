@@ -1,0 +1,23 @@
+# --- colcon 빌드 산출물 (재생성 가능, 용량 큼) ---
+build/
+install/
+log/
+
+# --- python 캐시 ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# --- 에디터/OS ---
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# --- ROS 런타임/임시 ---
+*.bag
+*.db3
+*.active
+
+# --- Claude Code 로컬 설정 ---
+.claude/
