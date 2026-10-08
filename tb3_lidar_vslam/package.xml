@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>tb3_lidar_vslam</name>
+  <version>0.1.0</version>
+  <description>
+    TurtleBot3 Waffle + Intel RealSense D435i: LiDAR 2D SLAM (slam_toolbox) and
+    camera RGB-D / Visual-Inertial SLAM (RTAB-Map) run side-by-side for comparison.
+    Designed for a 2-Pi split (robot Pi owns lidar+SLAM+TF, camera Pi owns D435i+vslam).
+    ROS 2 Jazzy.
+  </description>
+  <maintainer email="kochanyeong123@gmail.com">chan</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <!-- launch-time dependencies (nodes this package orchestrates) -->
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>slam_toolbox</exec_depend>
+  <exec_depend>rtabmap_slam</exec_depend>
+  <exec_depend>rtabmap_odom</exec_depend>
+  <exec_depend>rtabmap_launch</exec_depend>
+  <exec_depend>imu_filter_madgwick</exec_depend>
+  <exec_depend>realsense2_camera</exec_depend>
+  <exec_depend>nav2_map_server</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

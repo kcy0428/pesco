@@ -21,3 +21,5 @@ __pycache__/
 
 # --- Claude Code 로컬 설정 ---
 .claude/
+
+turtlebot3-autonomy-stack/

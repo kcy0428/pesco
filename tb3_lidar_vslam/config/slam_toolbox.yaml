@@ -1,0 +1,35 @@
+# slam_toolbox (LiDAR 2D SLAM) 파라미터 — TurtleBot3 Waffle / 실제 LDS 라이다
+# 이 노드가 map->odom TF를 소유한다 (RTAB-Map 쪽은 publish_tf=false).
+slam_toolbox:
+  ros__parameters:
+    # --- 프레임 ---
+    odom_frame: odom
+    map_frame: map
+    base_frame: base_footprint
+    scan_topic: /scan_fixed   # scan_fixer.py 가 점 개수 보정해 내보내는 토픽 (원본 /scan 아님)
+
+    # --- 모드 ---
+    mode: mapping                 # mapping | localization
+    use_sim_time: false           # bag 재생이면 런치에서 true 로 덮어씀
+
+    # --- 성능 (Pi5 부하 고려) ---
+    throttle_scans: 1
+    map_update_interval: 2.0      # 지도 갱신 주기(초) — 너무 잦으면 CPU↑
+    resolution: 0.05
+    max_laser_range: 12.0         # LDS 유효거리
+    minimum_time_interval: 0.3
+    transform_timeout: 0.2
+    tf_buffer_duration: 10.0
+
+    # --- 스캔 매칭 ---
+    use_scan_matching: true
+    use_scan_barycenter: true
+    minimum_travel_distance: 0.2
+    minimum_travel_heading: 0.2
+    scan_buffer_size: 10
+
+    # --- 루프 클로저 ---
+    do_loop_closing: true
+    loop_search_maximum_distance: 3.0
+    loop_match_minimum_response_coarse: 0.35
+    loop_match_minimum_response_fine: 0.45
