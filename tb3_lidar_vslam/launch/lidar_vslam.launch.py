@@ -43,8 +43,16 @@ def generate_launch_description():
     use_vio      = LaunchConfiguration('use_vio')
     frame_id     = LaunchConfiguration('frame_id')
     use_sim_time = LaunchConfiguration('use_sim_time')
+    force_3dof   = LaunchConfiguration('force_3dof')
+    vslam_publish_tf = LaunchConfiguration('vslam_publish_tf')
 
     args = [
+        DeclareLaunchArgument('vslam_publish_tf', default_value='false',
+                              description='RTAB-Map 이 map->odom TF 를 발행할지. 2-Pi 동시(라이다가 TF 소유)면 '
+                                          'false, D435i vSLAM 단독이면 true (자기 TF 소유)'),
+        DeclareLaunchArgument('force_3dof', default_value='false',
+                              description='RTAB-Map 2D 평면 제약. 지면 프레임(base_footprint)일 때만 true 권장; '
+                                          'camera_link 단독이면 false (기울어진 평면 제약으로 지도가 대칭/뒤틀림)'),
         DeclareLaunchArgument('lidar', default_value='true',
                               description='slam_toolbox (LiDAR 2D SLAM, owns map->odom TF)'),
         DeclareLaunchArgument('camera', default_value='true',
@@ -127,10 +135,10 @@ def generate_launch_description():
             'frame_id': frame_id,
             'approx_sync': 'true',
             'qos': '2',                       # best_effort (카메라/ bag QoS)
-            'publish_tf': 'false',            # ★ map->odom TF 발행 안 함
+            'publish_tf': vslam_publish_tf,   # 단독 vSLAM이면 true (자기 map->odom 소유)
             'rtabmap_viz': 'false',
             'rviz': 'false',
-            'args': '-d --Reg/Force3DoF true',  # 이전 DB 삭제 + 지상 로봇 2D 가정
+            'args': ['-d --Reg/Force3DoF ', force_3dof],  # 이전 DB 삭제 + (옵션)2D 평면 제약
             'use_sim_time': use_sim_time,
         }.items(),
     )
