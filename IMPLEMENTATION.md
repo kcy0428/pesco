@@ -1,7 +1,44 @@
 # 구현 정리 — D435i vSLAM + YOLO 객체인식 (TurtleBot3 / ROS 2 Jazzy)
 
 라즈베리파이5 2대 + TurtleBot3 Waffle + Intel RealSense D435i 로 **라이다 SLAM, 카메라 vSLAM,
-YOLO 객체인식**을 구현한 과정 정리.
+YOLO 객체인식**을 구현한 과정 정리. **이 문서만 보고 처음부터 재현**할 수 있도록 순서대로 정리했다.
+
+### 재현 순서 한눈에
+1. [사전 준비](#0-사전-준비-ospackage) — OS/ROS/저장소
+2. [D435i 카메라 셋업](#2-d435i-카메라-셋업-pi-2) (Pi#2)
+3. [카메라 vSLAM](#3-카메라-vslam-rtab-map-vio) → 3D 점군 지도
+4. [라이다 2D SLAM](#4-라이다-2d-slam-pi-1-참고) (Pi#1)
+5. [YOLO 객체인식](#5-yolo-객체인식-vmware) (VMware)
+6. [전체 실행 순서](#7-전체-실행-순서-복붙용)
+
+---
+
+## 0. 사전 준비 (OS/package)
+
+**세 머신 공통:** Ubuntu 24.04 + ROS 2 Jazzy, `~/.bashrc` 에:
+```bash
+echo 'source /opt/ros/jazzy/setup.bash' >> ~/.bashrc
+echo 'export ROS_DOMAIN_ID=30' >> ~/.bashrc
+echo 'export TURTLEBOT3_MODEL=waffle' >> ~/.bashrc   # 로봇 Pi 만
+```
+- Pi#1(로봇): `ros-jazzy-turtlebot3*`, `ros-jazzy-slam-toolbox`, `ros-jazzy-nav2-bringup`
+- Pi#2(카메라): librealsense2(§2-1) + realsense-ros, `ros-jazzy-rtabmap-ros`,
+  `ros-jazzy-imu-filter-madgwick`
+- VMware(PC): `ros-jazzy-rviz2`, `ros-jazzy-rqt-image-view`, `pcl-tools`, YOLO venv(§5)
+
+**저장소(프로젝트 패키지):**
+```bash
+git clone --recursive git@github.com:kcy0428/pesco.git ~/D435i   # realsense-ros 서브모듈 포함
+cd ~/D435i && colcon build && source install/setup.bash
+```
+
+**두 Pi 시계 동기화(chrony)** — 분산 SLAM 타임스탬프 정합:
+```bash
+sudo apt install -y chrony
+# Pi#1 (서버): /etc/chrony/chrony.conf 에  allow 192.168.0.0/24  +  local stratum 10
+# Pi#2 (클라): /etc/chrony/chrony.conf 에  server <PI1_IP> iburst prefer
+sudo systemctl restart chrony   # 양쪽.  확인: chronyc sources (^* 표시 = 동기화됨)
+```
 
 ---
 
@@ -114,3 +151,44 @@ python3 yolo_detect.py
 - vSLAM 3D 점군: `~/maps/vslam_cloud.ply/.pcd` (27만 포인트), 2D: `vslam_map`
 - RTAB-Map DB: `~/.ros/rtabmap.db` (재추출·이어매핑)
 - 지도 보기(VMware): `pcl_viewer vslam_cloud.pcd`(3D), `eog vslam_map.pgm`(2D)
+
+---
+
+## 7. 전체 실행 순서 (복붙용)
+
+모든 터미널 `export ROS_DOMAIN_ID=30`. (한 번에 다 돌리지 말고 목적에 맞게 선택)
+
+### A. 라이다 2D 지도 만들기 (Pi#1)
+```bash
+# 터미널1: 로봇
+export TURTLEBOT3_MODEL=waffle
+ros2 launch turtlebot3_bringup robot.launch.py
+# 터미널2: 라이다 SLAM (scan_fixer 포함) + 라이프사이클 활성화
+ros2 launch tb3_lidar_vslam lidar_vslam.launch.py lidar:=true camera:=false vslam:=false
+ros2 lifecycle set /slam_toolbox configure && ros2 lifecycle set /slam_toolbox activate
+# 터미널3: 운전
+ros2 run turtlebot3_teleop teleop_keyboard
+# 완성 후 저장
+ros2 run nav2_map_server map_saver_cli -f ~/maps/lab_map
+```
+
+### B. D435i vSLAM 3D 지도 (Pi#2 단독)
+```bash
+ros2 launch tb3_lidar_vslam lidar_vslam.launch.py \
+  lidar:=false camera:=true vslam:=true \
+  frame_id:=camera_link vslam_publish_tf:=true force_3dof:=false
+# VMware 보기: ros2 run rtabmap_viz rtabmap_viz   (또는 RViz /rtabmap/cloud_map)
+# 저장(Pi#2): ros2 run nav2_map_server map_saver_cli -f ~/maps/vslam_map --ros-args -r map:=/rtabmap/map
+#            rtabmap-export --cloud ~/.ros/rtabmap.db   # 3D ply
+```
+
+### C. YOLO 객체인식 (VMware, B가 돌아 카메라 토픽이 있을 때)
+```bash
+source ~/yolo_venv/bin/activate
+python3 ~/D435i/tb3_yolo_perception/scripts/yolo_detect.py
+# 보기: rqt_image_view /yolo/image  |  RViz MarkerArray /yolo/markers (Fixed Frame=map)
+```
+
+> 검증 포인트: SLAM 지도는 `/map` 또는 `/rtabmap/map` width/height 가 커지면 OK.
+> vSLAM VIO 는 로그의 `Odom: quality=` 가 >0(보통 200~470)이어야 추적 중.
+> YOLO 는 `/yolo/image`, `/yolo/markers` 가 ~5Hz 발행되면 OK.
