@@ -9,8 +9,14 @@ Raspberry Pi 5 (Ubuntu 24.04, ROS 2 **Jazzy**) + **TurtleBot3 Waffle** + **Intel
 **현재까지 완성(2026-10-09):**
 - ✅ **LiDAR 2D SLAM** (slam_toolbox) — 점유격자 지도 생성·저장
 - ✅ **D435i Visual-Inertial SLAM** (RTAB-Map VIO) — 3D 컬러 점군 지도 생성·저장
-- ✅ **YOLO 객체인식 + 3D 위치추정** — vSLAM 3D 지도 위에 객체 표시(시맨틱 맵)
-- 구성: **2-Pi 분산**(Pi#1=로봇/라이다, Pi#2=카메라/vSLAM) + VMware(시각화/YOLO), chrony 시계동기화
+- ✅ **YOLO 객체인식 + 3D 위치추정** — RGB-D 로 COCO 80종 검출, `/yolo/image`·`/yolo/markers`
+- ✅ **Nav2 자율주행** (라이다 지도 기반, AMCL 위치추정) — 목표 좌표로 자율 이동
+- ✅ **음성 안내로봇 end-to-end** — Gemini Live API(STT+LLM+TTS+함수호출)로 목적지를 말하면
+  웨이포인트 조회→Nav2 자율주행. 등록 장소: 로비/회의실/화장실/정수기. 이동 중 YOLO 동시 실행.
+- 구성: **2-Pi 분산**(Pi#1=로봇/라이다/Nav2, Pi#2=카메라/vSLAM) + VMware(시각화/YOLO/음성), chrony 시계동기화
+
+> 남은 작업: 스피커(TTS 출력)는 로봇에 USB 스피커 장착 예정. YOLO 를 Pi#2 로 이전하면 VMware
+> 부하 분산(아래 "알려진 이슈" 참고).
 
 > 전체 구현 과정·트러블슈팅은 **[IMPLEMENTATION.md](IMPLEMENTATION.md)** 참고.
 
@@ -80,9 +86,9 @@ ros2 run turtlebot3_teleop teleop_keyboard
 ## YOLO 객체인식 (시맨틱 맵)
 
 `tb3_yolo_perception` — D435i RGB-D 로 YOLOv8(COCO 80종 사전학습) 검출 + depth 3D 투영.
-VMware(x86)에서 실행 권장. `/yolo/image`(박스영상) + `/yolo/markers`(3D 객체 마커) 발행.
+`/yolo/image`(박스영상) + `/yolo/markers`(3D 객체 마커) 발행.
 ```bash
-# VMware (1회 설치)
+# (1회 설치) rclpy + ultralytics 공존 위해 --system-site-packages venv
 python3 -m venv --system-site-packages ~/yolo_venv
 source ~/yolo_venv/bin/activate
 pip install ultralytics "numpy<2" "opencv-python<5"   # ROS(numpy1.x) 호환 위해 버전 고정
@@ -92,12 +98,38 @@ python3 ~/D435i/tb3_yolo_perception/scripts/yolo_detect.py
 # 보기: rqt_image_view /yolo/image, RViz MarkerArray /yolo/markers (Fixed Frame=map)
 ```
 
+## Nav2 자율주행 + 음성 안내 (`tb3_voice_guide`)
+
+라이다 지도 기반 Nav2 자율주행 + Gemini Live 음성 명령. **목적지를 말하면** 등록 웨이포인트로
+자율 이동한다. (TTS 음성응답은 스피커 장착 후 활성화 — 현재 STT·주행은 동작)
+```bash
+# Pi#1: 로봇 + 라이다
+ros2 launch turtlebot3_bringup robot.launch.py
+# Pi#1: Nav2 (저장한 라이다 지도로 localization+navigation)
+ros2 launch nav2_bringup bringup_launch.py \
+  map:=$HOME/maps/lab_map.yaml use_sim_time:=false \
+  params_file:=/opt/ros/jazzy/share/turtlebot3_navigation2/param/waffle.yaml
+# (RViz 에서 2D Pose Estimate 로 초기 위치 지정 → AMCL 수렴)
+
+# 웨이포인트 등록 — 로봇을 원하는 곳에 두고 현재 위치 저장
+python3 ~/D435i/tb3_voice_guide/scripts/save_waypoint.py 로비 \
+  --file ~/D435i/tb3_voice_guide/config/waypoints.yaml
+
+# VMware: 음성 노드 (마이크 + 인터넷 필요)
+source ~/voice_venv/bin/activate          # google-genai, sounddevice, pyyaml, numpy<2
+export GEMINI_API_KEY="..."               # ~/.bashrc 에 등록 (git 에 커밋 금지)
+python3 ~/D435i/tb3_voice_guide/scripts/voice_guide.py \
+  --waypoints ~/D435i/tb3_voice_guide/config/waypoints.yaml
+# 말하기 예: "회의실 가줘" → navigate_to(회의실) → Nav2 자율주행
+```
+
 ## 이 저장소 구성
 - `IMPLEMENTATION.md` — **전체 구현 정리** (카메라 셋업 → vSLAM → YOLO, 트러블슈팅)
 - `CLAUDE.md` — 작업공간 가이드(빌드/구조/파라미터 규약)
 - **`tb3_lidar_vslam/`** — LiDAR SLAM + D435i vSLAM 통합 패키지 (scan_fixer, scan_view, 런치/설정)
 - **`tb3_pcl_perception/`** — D435i 포인트클라우드 3D 인지 파이프라인
 - **`tb3_yolo_perception/`** — YOLO 객체인식 + 3D 투영 노드
+- **`tb3_voice_guide/`** — Gemini Live 음성 안내 + Nav2 자율주행 (voice_guide, save_waypoint, waypoints.yaml)
 - `launch/` — 초기 통합 런치들 (d435i_slam, dual_slam, vslam_vio)
 - `config/` — RViz 설정, 수정한 waffle URDF 참고본
 - `realsense-ros/` — RealSense ROS 래퍼 (서브모듈)
@@ -110,4 +142,13 @@ python3 ~/D435i/tb3_yolo_perception/scripts/yolo_detect.py
   `xyz="0.09 0 0.12"` (상판 중앙·라이다 바로 앞, 정면)으로 수정함. URDF 주석에 콜론(`:`)을 넣으면
   `robot_description` YAML 파싱이 깨지므로 금지.
 - **모터 통신 이슈**: `Failed transmit instruction packet` 발생 시 LiPo 배터리 충전 / OpenCR 리셋 /
-  모터 케이블 점검.
+  모터 케이블 점검. (단일 Pi 에 카메라까지 물리면 CPU 과부하로 시리얼이 굶어 발생 → 카메라를 Pi#2 로 분리)
+- **VMware CPU 병목(음성 지연)**: VMware 가 2코어뿐이라 YOLO+RViz+음성을 동시에 돌리면 load 가
+  3.5 넘게 치솟아(코어당 1.75) 음성 노드의 asyncio 마이크 전송 루프가 밀려 **STT 응답이 느려짐**
+  (인식 자체는 정상 — 연동 끊김 아님. 참고로 "VMware 연동 안 됨"은 STT 가 아니라 TTS/스피커 문제).
+  (Pi#2 는 카메라만이라 load 0.3 수준으로 한가함.) 해결: ① VMware 코어 4개로 ② RViz 끄기
+  ③ **YOLO 를 한가한 Pi#2 로 이전**(네트워크로 카메라 영상 안 넘겨 WiFi 부담도↓, 권장).
+- **포인트클라우드 3D 뷰**: 라이브 점군은 `pointcloud__neon_.enable:=true` 로 켜고 RViz 에서
+  Color Transformer=`AxisColor`, Axis=`Z` + 시점을 비스듬히 기울이면 높이(z)가 색으로 보임.
+- **Gemini Live 모델명**: `gemini-2.5-flash-native-audio-latest` (AUDIO 응답 + function calling 확인).
+  API 키는 VMware `~/.bashrc` 의 `GEMINI_API_KEY`; **`.env`/`*.key` 와 함께 git 제외**.

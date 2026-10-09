@@ -1,7 +1,8 @@
-# 구현 정리 — D435i vSLAM + YOLO 객체인식 (TurtleBot3 / ROS 2 Jazzy)
+# 구현 정리 — 음성 안내로봇 (D435i vSLAM + YOLO + Nav2, TurtleBot3 / ROS 2 Jazzy)
 
 라즈베리파이5 2대 + TurtleBot3 Waffle + Intel RealSense D435i 로 **라이다 SLAM, 카메라 vSLAM,
-YOLO 객체인식**을 구현한 과정 정리. **이 문서만 보고 처음부터 재현**할 수 있도록 순서대로 정리했다.
+YOLO 객체인식, Nav2 자율주행, 음성 안내(Gemini Live)**를 구현한 과정 정리.
+**이 문서만 보고 처음부터 재현**할 수 있도록 순서대로 정리했다.
 
 ### 재현 순서 한눈에
 1. [사전 준비](#0-사전-준비-ospackage) — OS/ROS/저장소
@@ -9,7 +10,8 @@ YOLO 객체인식**을 구현한 과정 정리. **이 문서만 보고 처음부
 3. [카메라 vSLAM](#3-카메라-vslam-rtab-map-vio) → 3D 점군 지도
 4. [라이다 2D SLAM](#4-라이다-2d-slam-pi-1-참고) (Pi#1)
 5. [YOLO 객체인식](#5-yolo-객체인식-vmware) (VMware)
-6. [전체 실행 순서](#7-전체-실행-순서-복붙용)
+6. [Nav2 자율주행 + 음성 안내](#6-nav2-자율주행--음성-안내-gemini-live) — 목적지 말하면 자율 이동
+7. [전체 실행 순서](#8-전체-실행-순서-복붙용)
 
 ---
 
@@ -143,10 +145,64 @@ source /opt/ros/jazzy/setup.bash && export ROS_DOMAIN_ID=30
 python3 yolo_detect.py
 ```
 - 보기: `rqt_image_view /yolo/image`, RViz MarkerArray `/yolo/markers`(Fixed Frame=map).
+- **numpy ABI 함정**: ROS(rclpy)는 numpy 1.x, 최신 ultralytics/opencv 는 numpy 2.x 를 끌어와 충돌.
+  → `pip install ultralytics "numpy<2" "opencv-python<5"` 로 고정. 노드는 `cv_bridge` 없이
+  numpy 로 직접 디코드(`np.frombuffer(...).reshape(h,w,3)`)해 의존성 충돌을 아예 피함.
 
 ---
 
-## 6. 산출물
+## 6. Nav2 자율주행 + 음성 안내 (Gemini Live)
+
+패키지 `tb3_voice_guide`. 흐름: **🎤 마이크 → Gemini Live(STT+LLM+TTS+함수호출) →
+`navigate_to(목적지)` → 웨이포인트 조회(이름→map 좌표) → Nav2 `NavigateToPose` 목표 전송**.
+
+### 6-1. Nav2 (라이다 지도 기반 자율주행, Pi#1)
+`rviz2` 없는 헤드리스 Pi 에서는 `navigation2.launch.py` 가 `rviz2` 패키지를 찾다 실패 →
+**`nav2_bringup bringup_launch.py` + turtlebot3 `waffle.yaml` 파라미터**로 실행:
+```bash
+ros2 launch nav2_bringup bringup_launch.py \
+  map:=$HOME/maps/lab_map.yaml use_sim_time:=false \
+  params_file:=/opt/ros/jazzy/share/turtlebot3_navigation2/param/waffle.yaml
+```
+- **초기 위치**: RViz(VMware)에서 `2D Pose Estimate` 로 로봇 실제 위치를 찍어야 AMCL 이 수렴.
+  (실수로 `Nav2 Goal`/`2D Pose Estimate` 를 잘못 찍으면 지도상 로봇이 튐 → 다시 찍어 정렬.)
+- 검증: `/navigate_to_pose` 액션 서버 존재, 목표 전송 시 로봇 실제 주행 + 최종 status 4(SUCCEEDED).
+  (CLI `send_goal` 이 타임아웃돼도 로봇은 실제로 도착하는 경우 있음 — 주행 자체가 기준.)
+
+### 6-2. 웨이포인트 등록 (`save_waypoint.py`)
+로봇을 원하는 장소에 두고 **현재 map→base_footprint TF 를 읽어 이름으로 저장**:
+```bash
+python3 ~/D435i/tb3_voice_guide/scripts/save_waypoint.py 로비 \
+  --aliases "입구,현관" --file ~/D435i/tb3_voice_guide/config/waypoints.yaml
+```
+등록된 장소(`config/waypoints.yaml`): **로비 / 회의실 / 화장실 / 정수기** (각 별칭 포함).
+
+### 6-3. 음성 노드 (`voice_guide.py`, VMware)
+- 모델 **`gemini-2.5-flash-native-audio-latest`** (Live 네이티브 음성 — AUDIO 응답 + function
+  calling 동시 지원. `gemini-2.0-flash-live-001` 은 미존재 → `models.list` 로 확인해 교체함).
+- `response_modalities=["AUDIO"]` + `input/output_audio_transcription`(디버그 전사 로그).
+- **마이크 자동선택**: 기본 입력이 가상 사운드카드면 무음 → 노드가 `c920/webcam/usb` 장치를 찾아 선택.
+- venv: `google-genai, sounddevice, pyyaml, numpy<2` (+ 시스템 `libportaudio2`). 키는 `GEMINI_API_KEY`.
+```bash
+source ~/voice_venv/bin/activate
+export GEMINI_API_KEY="..."     # ~/.bashrc 등록, git 커밋 금지(.env/*.key 는 .gitignore)
+python3 ~/D435i/tb3_voice_guide/scripts/voice_guide.py \
+  --waypoints ~/D435i/tb3_voice_guide/config/waypoints.yaml
+# "회의실 가줘" → [🎤 들림]/[🔊 응답]/[🚗 navigate_to] 로그 → Nav2 주행
+```
+- **TTS 출력(스피커)**: 게스트 오디오는 Ensoniq 가상카드로 재생되나 VMware→Windows 호스트 스피커
+  라우팅이 막혀 소리가 안 남. **로봇에 USB 스피커 장착 후 활성화 예정**(STT·주행은 정상 동작).
+
+### 6-4. ★ 성능 교훈 — VMware 2코어 병목
+YOLO + RViz + 음성을 **VMware(2코어)에서 동시 실행**하면 load≈3.5(코어당 1.75)로 과부하 →
+음성 노드의 **asyncio 마이크 전송 루프가 밀려 STT 응답이 느려짐**(인식·연동은 정상, 지연일 뿐).
+(Pi#2 는 카메라만이라
+load 0.3 으로 한가.) 대책: ① VMware 코어 4개로 ② RViz 끄기 ③ **YOLO 를 Pi#2 로 이전**
+(카메라 영상이 네트워크를 안 건너가 WiFi 부담도↓ — 권장).
+
+---
+
+## 7. 산출물
 - 라이다 2D 지도: `~/maps/lab_map.pgm/.yaml` (+ `lab_graph` 이어매핑용)
 - vSLAM 3D 점군: `~/maps/vslam_cloud.ply/.pcd` (27만 포인트), 2D: `vslam_map`
 - RTAB-Map DB: `~/.ros/rtabmap.db` (재추출·이어매핑)
@@ -154,7 +210,7 @@ python3 yolo_detect.py
 
 ---
 
-## 7. 전체 실행 순서 (복붙용)
+## 8. 전체 실행 순서 (복붙용)
 
 모든 터미널 `export ROS_DOMAIN_ID=30`. (한 번에 다 돌리지 말고 목적에 맞게 선택)
 
