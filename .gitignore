@@ -27,3 +27,6 @@ turtlebot3-autonomy-stack/
 # API 키 등 비밀
 .env
 *.key
+
+# 별개 프로젝트(자체 git, pesco 미포함)
+tts_Self_driving_buger/
