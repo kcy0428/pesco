@@ -67,7 +67,7 @@ class NavBridge(Node):
         if key is None:
             return f"'{name}' 은(는) 등록된 장소가 아닙니다. 가능한 곳: {', '.join(self.waypoints)}"
         wp = self.waypoints[key]
-        if not self.client.wait_for_server(timeout_sec=2.0):
+        if not self.client.wait_for_server(timeout_sec=5.0):
             return "Nav2 가 아직 준비되지 않았습니다 (navigate_to_pose 액션 서버 없음)."
         goal = NavigateToPose.Goal()
         p = PoseStamped()
@@ -106,6 +106,8 @@ def build_config(waypoints):
         response_modalities=["AUDIO"],   # 네이티브 음성 모델이 한국어 음성으로 응답
         system_instruction=types.Content(parts=[types.Part(text=system)]),
         tools=[types.Tool(function_declarations=[nav_decl])],
+        input_audio_transcription=types.AudioTranscriptionConfig(),   # 들린 말 전사(디버그)
+        output_audio_transcription=types.AudioTranscriptionConfig(),  # 응답 전사(디버그)
     )
 
 
@@ -139,17 +141,26 @@ async def run(nav: NavBridge, waypoints):
         async def recv():
             while True:
                 async for resp in session.receive():
-                    # 1) 음성 응답 재생
-                    if resp.data:
-                        out_stream.write(resp.data)
-                    # 2) 함수 호출 처리 (navigate_to)
+                    sc = resp.server_content
+                    if sc:
+                        # 들린 말 / 응답 텍스트 로그 (디버그)
+                        if sc.input_transcription and sc.input_transcription.text:
+                            print(f"\n[🎤 들림] {sc.input_transcription.text}")
+                        if sc.output_transcription and sc.output_transcription.text:
+                            print(f"[🔊 응답] {sc.output_transcription.text}", flush=True)
+                        # 음성 재생 (resp.data 대신 parts 순회 → 경고 없음)
+                        if sc.model_turn:
+                            for part in sc.model_turn.parts:
+                                if part.inline_data and part.inline_data.data:
+                                    out_stream.write(part.inline_data.data)
+                    # 함수 호출 처리 (navigate_to)
                     if resp.tool_call:
                         responses = []
                         for fc in resp.tool_call.function_calls:
                             if fc.name == "navigate_to":
                                 dest = fc.args.get("destination", "")
                                 result = nav.go(dest)
-                                print(f"[navigate_to] {dest} -> {result}")
+                                print(f"\n[🚗 navigate_to] {dest} -> {result}")
                                 responses.append(types.FunctionResponse(
                                     id=fc.id, name=fc.name, response={"result": result}))
                         if responses:
