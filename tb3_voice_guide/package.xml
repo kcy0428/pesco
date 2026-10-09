@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>tb3_voice_guide</name>
+  <version>0.1.0</version>
+  <description>
+    음성 안내로봇 — Gemini Live API(STT+LLM+TTS 통합, function calling)로 음성 목적지를 받아
+    웨이포인트 조회 후 Nav2 NavigateToPose 로 자율주행시키고 음성으로 안내한다. (ROS 2 Jazzy)
+    VMware(마이크·스피커·인터넷)에서 venv(google-genai, sounddevice)로 실행.
+  </description>
+  <maintainer email="kochanyeong123@gmail.com">chan</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>nav2_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <!-- google-genai, sounddevice 는 pip(venv) 설치 -->
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

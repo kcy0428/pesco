@@ -23,3 +23,7 @@ __pycache__/
 .claude/
 
 turtlebot3-autonomy-stack/
+
+# API 키 등 비밀
+.env
+*.key
