@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>tb3_yolo_perception</name>
+  <version>0.1.0</version>
+  <description>
+    D435i RGB-D 로 YOLOv8 객체인식 + 3D 위치추정 (ROS 2 Jazzy).
+    RGB -> YOLO 2D 검출 -> aligned_depth 로 3D 투영 -> /yolo/image + /yolo/markers.
+    VMware(x86)에서 ultralytics venv 로 실행. SLAM 과 무관하게 카메라 토픽만 있으면 동작.
+  </description>
+  <maintainer email="kochanyeong123@gmail.com">chan</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>visualization_msgs</exec_depend>
+  <exec_depend>message_filters</exec_depend>
+  <!-- ultralytics 는 pip(venv) 로 설치 (rosdep 대상 아님) -->
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

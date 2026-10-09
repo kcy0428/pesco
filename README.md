@@ -4,8 +4,15 @@ Raspberry Pi 5 (Ubuntu 24.04, ROS 2 **Jazzy**) + **TurtleBot3 Waffle** + **Intel
 기반의 SLAM / 자율주행 작업공간입니다.
 
 최종 목표: 지도를 만들고(SLAM), 음성(STT·LLM·TTS)으로 목적지를 말하면 Nav2로 자율주행하는
-**음성 안내로봇**. 현재는 **LiDAR SLAM(slam_toolbox)** 과 **Visual SLAM(RTAB-Map)** 을 병렬로
-돌려 비교하는 단계.
+**음성 안내로봇**.
+
+**현재까지 완성(2026-10-09):**
+- ✅ **LiDAR 2D SLAM** (slam_toolbox) — 점유격자 지도 생성·저장
+- ✅ **D435i Visual-Inertial SLAM** (RTAB-Map VIO) — 3D 컬러 점군 지도 생성·저장
+- ✅ **YOLO 객체인식 + 3D 위치추정** — vSLAM 3D 지도 위에 객체 표시(시맨틱 맵)
+- 구성: **2-Pi 분산**(Pi#1=로봇/라이다, Pi#2=카메라/vSLAM) + VMware(시각화/YOLO), chrony 시계동기화
+
+> 전체 구현 과정·트러블슈팅은 **[IMPLEMENTATION.md](IMPLEMENTATION.md)** 참고.
 
 ## 하드웨어
 - Raspberry Pi 5 (Ubuntu 24.04 arm64)
@@ -70,12 +77,31 @@ ros2 launch turtlebot3_bringup robot.launch.py
 ros2 run turtlebot3_teleop teleop_keyboard
 ```
 
+## YOLO 객체인식 (시맨틱 맵)
+
+`tb3_yolo_perception` — D435i RGB-D 로 YOLOv8(COCO 80종 사전학습) 검출 + depth 3D 투영.
+VMware(x86)에서 실행 권장. `/yolo/image`(박스영상) + `/yolo/markers`(3D 객체 마커) 발행.
+```bash
+# VMware (1회 설치)
+python3 -m venv --system-site-packages ~/yolo_venv
+source ~/yolo_venv/bin/activate
+pip install ultralytics "numpy<2" "opencv-python<5"   # ROS(numpy1.x) 호환 위해 버전 고정
+# 실행
+source /opt/ros/jazzy/setup.bash && export ROS_DOMAIN_ID=30
+python3 ~/D435i/tb3_yolo_perception/scripts/yolo_detect.py
+# 보기: rqt_image_view /yolo/image, RViz MarkerArray /yolo/markers (Fixed Frame=map)
+```
+
 ## 이 저장소 구성
+- `IMPLEMENTATION.md` — **전체 구현 정리** (카메라 셋업 → vSLAM → YOLO, 트러블슈팅)
 - `CLAUDE.md` — 작업공간 가이드(빌드/구조/파라미터 규약)
-- `launch/d435i_slam.launch.py` — D435i 카메라 + depth→scan + slam_toolbox 통합 런치
+- **`tb3_lidar_vslam/`** — LiDAR SLAM + D435i vSLAM 통합 패키지 (scan_fixer, scan_view, 런치/설정)
+- **`tb3_pcl_perception/`** — D435i 포인트클라우드 3D 인지 파이프라인
+- **`tb3_yolo_perception/`** — YOLO 객체인식 + 3D 투영 노드
+- `launch/` — 초기 통합 런치들 (d435i_slam, dual_slam, vslam_vio)
+- `config/` — RViz 설정, 수정한 waffle URDF 참고본
 - `realsense-ros/` — RealSense ROS 래퍼 (서브모듈)
-- `config/` — RViz 설정 등
-- (빌드 산출물 `build/ install/ log/` 는 `.gitignore`로 제외)
+- (빌드 산출물 `build/ install/ log/`, 참고용 `turtlebot3-autonomy-stack/` 는 `.gitignore`로 제외)
 
 ## 중요 메모 / 알려진 이슈
 - **arm64 pointcloud 파라미터 이름은 `pointcloud__neon_.enable`** (NEON 접미사). `pointcloud.enable` 아님.
