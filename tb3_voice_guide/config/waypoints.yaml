@@ -1,22 +1,33 @@
-# 음성 안내로봇 웨이포인트 (이름 -> map 좌표)
-# RViz 에서 "2D Pose Estimate"/"Publish Point" 로 각 장소의 x,y,yaw 를 재서 채운다.
-# (ros2 run tf2_ros tf2_echo map base_footprint 로 현재 위치 확인 후 기록해도 됨)
-# yaw 단위: 라디안. map 은 저장한 지도(lab_map 등)의 프레임.
-
 waypoints:
-  시작점:
-    x: 0.0
+  로비:
+    x: 0.017
     y: 0.0
-    yaw: 0.0
-    aliases: ["원점", "홈", "출발점"]
+    yaw: -0.264
+    aliases:
+    - 입구
+    - 현관
+    - 로비앞
   회의실:
-    x: 2.5
-    y: 1.0
-    yaw: 1.57
-    aliases: ["미팅룸", "회의하는 곳"]
-  안내데스크:
-    x: -1.0
-    y: 0.5
-    yaw: 0.0
-    aliases: ["데스크", "입구", "리셉션"]
-  # 냉장고 등 YOLO 로 찾은 객체 위치도 여기에 추가 가능
+    x: 2.926
+    y: 0.218
+    yaw: -2.992
+    aliases:
+    - 미팅룸
+    - 회의하는 곳
+    - 미팅
+  화장실:
+    x: 1.309
+    y: 0.46
+    yaw: -1.758
+    aliases:
+    - 화장실
+    - toilet
+    - 세면장
+  정수기:
+    x: 1.818
+    y: -0.478
+    yaw: 2.662
+    aliases:
+    - 물
+    - 정수기
+    - 식수대

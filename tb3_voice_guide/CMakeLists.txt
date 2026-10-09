@@ -9,6 +9,7 @@ install(DIRECTORY config
 
 install(PROGRAMS
   scripts/voice_guide.py
+  scripts/save_waypoint.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
