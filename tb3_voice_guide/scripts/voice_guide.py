@@ -118,6 +118,20 @@ async def run(nav: NavBridge, waypoints):
         return
     client = genai.Client(api_key=key)
 
+    # 입력(마이크) 장치 자동 선택: C920/webcam 우선 (기본장치가 가상카드면 무음이 되는 문제 회피)
+    mic_dev = None
+    try:
+        for i, d in enumerate(sd.query_devices()):
+            if d['max_input_channels'] > 0 and any(k in d['name'].lower()
+                                                   for k in ('c920', 'webcam', 'usb')):
+                mic_dev = i
+                print(f"🎙  마이크 장치: [{i}] {d['name']}")
+                break
+    except Exception:
+        pass
+    if mic_dev is None:
+        print("🎙  마이크 장치: default (C920 못 찾음 — 기본 입력 사용)")
+
     mic_q: queue.Queue = queue.Queue()
 
     def mic_cb(indata, frames, t, status):
@@ -132,7 +146,7 @@ async def run(nav: NavBridge, waypoints):
         async def send_mic():
             loop = asyncio.get_event_loop()
             with sd.RawInputStream(samplerate=SEND_SR, blocksize=BLOCK, channels=1,
-                                   dtype='int16', callback=mic_cb):
+                                   dtype='int16', callback=mic_cb, device=mic_dev):
                 while True:
                     data = await loop.run_in_executor(None, mic_q.get)
                     await session.send_realtime_input(
