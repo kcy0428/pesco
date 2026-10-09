@@ -37,7 +37,7 @@ from geometry_msgs.msg import PoseStamped
 from google import genai
 from google.genai import types
 
-MODEL = "gemini-2.0-flash-live-001"   # Live(스트리밍) 모델
+MODEL = "gemini-2.5-flash-native-audio-latest"   # Live 네이티브 음성 모델 (models.list 로 확인)
 SEND_SR = 16000   # 마이크 입력 샘플레이트 (Gemini 입력 규격)
 RECV_SR = 24000   # Gemini 오디오 출력 샘플레이트
 BLOCK = 1600      # 0.1s @ 16kHz
@@ -103,10 +103,9 @@ def build_config(waypoints):
         ),
     )
     return types.LiveConnectConfig(
-        response_modalities=["AUDIO"],
+        response_modalities=["AUDIO"],   # 네이티브 음성 모델이 한국어 음성으로 응답
         system_instruction=types.Content(parts=[types.Part(text=system)]),
         tools=[types.Tool(function_declarations=[nav_decl])],
-        speech_config=types.SpeechConfig(language_code="ko-KR"),
     )
 
 
